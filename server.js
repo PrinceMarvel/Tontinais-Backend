@@ -25,6 +25,24 @@ const startServer = async () => {
     );
   });
 
+  // Gestion de l'arrêt gracieux du serveur (libération immédiate du port)
+  const fermerServeur = (signal) => {
+    console.log(`\n[Serveur] Signal ${signal} reçu. Arrêt gracieux en cours...`);
+    server.close(() => {
+      console.log('[Serveur] Serveur HTTP arrêté et port libéré avec succès.');
+      process.exit(0);
+    });
+
+    // Arrêt forcé après 5 secondes si des sockets restent ouvertes
+    setTimeout(() => {
+      console.error('[Serveur] Délai dépassé. Fermeture forcée du processus.');
+      process.exit(1);
+    }, 5000).unref();
+  };
+
+  process.on('SIGINT', () => fermerServeur('SIGINT'));
+  process.on('SIGTERM', () => fermerServeur('SIGTERM'));
+
   // Gérer les rejets de promesses non capturés (Unhandled Rejections)
   process.on('unhandledRejection', (err) => {
     console.error(`[Fatal Server Error] Rejet de promesse non géré : ${err.message}`);
@@ -34,7 +52,7 @@ const startServer = async () => {
   // Gérer les exceptions non capturées (Uncaught Exceptions)
   process.on('uncaughtException', (err) => {
     console.error(`[Fatal Server Error] Exception non capturée : ${err.message}`);
-    process.exit(1);
+    server.close(() => process.exit(1));
   });
 };
 

@@ -13,7 +13,7 @@ dotenv.config();
 const env = {
   // Environnement de fonctionnement
   NODE_ENV: process.env.NODE_ENV || 'development',
-  PORT: parseInt(process.env.PORT, 10) || 5000,
+  PORT: parseInt(process.env.PORT, 10) || 5001,
 
   // Base de données MongoDB Atlas
   MONGODB_URI:
