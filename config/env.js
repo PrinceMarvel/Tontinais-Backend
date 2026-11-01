@@ -15,15 +15,13 @@ const env = {
   NODE_ENV: process.env.NODE_ENV || 'development',
   PORT: parseInt(process.env.PORT, 10) || 5001,
 
-  // Base de données MongoDB Atlas
-  MONGODB_URI:
-    process.env.MONGODB_URI ||
-    'mongodb+srv://TontiNais:DabeJerome@tontinais.xdtbgyd.mongodb.net/?appName=TontiNais',
+  // Base de données MongoDB Atlas (obligatoire)
+  MONGODB_URI: process.env.MONGODB_URI || '',
 
   // Authentification et Sécurité JWT
-  JWT_SECRET: process.env.JWT_SECRET || 'tontinais_super_secret_jwt_key_production_level_90plus_2026',
+  JWT_SECRET: process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'tontinais_dev_secret_key_change_me_in_production'),
   JWT_EXPIRE: process.env.JWT_EXPIRE || '15m',
-  JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'tontinais_refresh_token_ultra_secure_key_2026',
+  JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'tontinais_dev_refresh_secret_key_change_me'),
   JWT_REFRESH_EXPIRE: process.env.JWT_REFRESH_EXPIRE || '7d',
 
   // Hachage et sécurité
@@ -34,9 +32,9 @@ const env = {
 
   // Service Cloudinary pour les reçus de paiement
   CLOUDINARY: {
-    CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || 'tontinais',
-    API_KEY: process.env.CLOUDINARY_API_KEY || '123456789012345',
-    API_SECRET: process.env.CLOUDINARY_API_SECRET || 'tontinais_cloudinary_secret_key'
+    CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || '',
+    API_KEY: process.env.CLOUDINARY_API_KEY || '',
+    API_SECRET: process.env.CLOUDINARY_API_SECRET || ''
   },
 
   // Passerelle de paiement direct Mobile Money (Orange Money, MTN, Wave)
@@ -49,15 +47,19 @@ const env = {
 };
 
 /**
- * Validation au démarrage en environnement de production.
+ * Validation des variables obligatoires au démarrage de l'application.
  */
-if (env.NODE_ENV === 'production') {
-  const requiredVars = ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'MONGODB_URI'];
-  const missingVars = requiredVars.filter((key) => !process.env[key]);
+const requiredVars = ['MONGODB_URI', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
+const missingVars = requiredVars.filter((key) => !env[key]);
 
-  if (missingVars.length > 0) {
+if (missingVars.length > 0) {
+  if (env.NODE_ENV === 'production') {
+    console.error(
+      `[ERREUR CRITIQUE] Variables d'environnement de production obligatoires manquantes : ${missingVars.join(', ')}`
+    );
+  } else {
     console.warn(
-      `[ATTENTION] Variables d'environnement de production manquantes : ${missingVars.join(', ')}`
+      `[ATTENTION DÉVELOPPEMENT] Variables d'environnement non définies : ${missingVars.join(', ')}`
     );
   }
 }

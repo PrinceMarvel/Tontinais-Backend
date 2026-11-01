@@ -13,6 +13,14 @@ const env = require('./env');
  * @returns {Promise<typeof mongoose>} Instance Mongoose connectée.
  */
 const connectDB = async () => {
+  if (!env.MONGODB_URI) {
+    console.error(
+      '[MongoDB Fatal Error] La variable d\'environnement MONGODB_URI n\'est pas configurée.\n' +
+      'Veuillez renseigner MONGODB_URI dans vos variables d\'environnement Render ou dans votre fichier .env.'
+    );
+    process.exit(1);
+  }
+
   try {
     const conn = await mongoose.connect(env.MONGODB_URI, {
       serverSelectionTimeoutMS: 15000,
@@ -35,6 +43,13 @@ const connectDB = async () => {
     return conn;
   } catch (error) {
     console.error(`[MongoDB Fatal Error] Échec lors de la connexion initiale : ${error.message}`);
+    if (error.message.includes('Could not connect to any servers')) {
+      console.error(
+        '[MongoDB Diagnostic] Le pare-feu réseau de MongoDB Atlas refuse la connexion.\n' +
+        'Assurez-vous d\'avoir autorisé l\'accès depuis n\'importe où (0.0.0.0/0) dans :\n' +
+        'MongoDB Atlas > Security > Network Access > Add IP Address > Allow Access From Anywhere.'
+      );
+    }
     process.exit(1);
   }
 };

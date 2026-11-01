@@ -82,6 +82,5 @@ const contributionSchema = new mongoose.Schema(
 contributionSchema.index({ group: 1, user: 1, tourNumber: 1 }, { unique: true });
 contributionSchema.index({ group: 1, statut: 1 });
 contributionSchema.index({ user: 1, statut: 1 });
-contributionSchema.index({ referenceTransaction: 1 });
 
 module.exports = mongoose.model('Contribution', contributionSchema);
