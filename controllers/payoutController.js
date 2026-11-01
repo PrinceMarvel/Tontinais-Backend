@@ -1,6 +1,6 @@
 /**
  * @file payoutController.js
- * @description Contrôleur d'orchestration des distributions de cagnottes et de détection des membres défaillants.
+ * @description Contrôleur d'orchestration des distributions directes de cagnottes vers les portefeuilles Mobile Money.
  * @module controllers/payoutController
  */
 
@@ -8,6 +8,7 @@ const Payout = require('../models/Payout');
 const Group = require('../models/Group');
 const Membership = require('../models/Membership');
 const Contribution = require('../models/Contribution');
+const WalletService = require('../services/walletService');
 
 /**
  * @desc Obtenir le calendrier des versements de cagnotte d'un groupe
@@ -18,6 +19,7 @@ exports.getGroupPayouts = async (req, res, next) => {
   try {
     const payouts = await Payout.find({ group: req.params.groupId })
       .populate('beneficiaire', 'nom prenom email telephone avatarUrl')
+      .populate('disbursedBy', 'nom prenom')
       .sort({ tourNumber: 1 });
 
     res.status(200).json({
@@ -77,6 +79,7 @@ exports.generatePayoutSchedule = async (req, res, next) => {
           beneficiaire: members[i].user,
           montantTotal: totalCagnotte,
           datePrevue,
+          modeDistribution: 'WALLET_DIRECT',
           statut: 'PLANIFIE'
         },
         { upsert: true, new: true }
@@ -98,13 +101,15 @@ exports.generatePayoutSchedule = async (req, res, next) => {
 };
 
 /**
- * @desc Marquer la cagnotte d'un tour comme distribuée au bénéficiaire
+ * @desc Distribuer directement la cagnotte vers le portefeuille Mobile Money du bénéficiaire
  * @route PUT /api/payouts/:id/distribute
  * @access Private (Chef de Tontine)
  */
 exports.distributePayout = async (req, res, next) => {
   try {
-    const payout = await Payout.findById(req.params.id);
+    const payout = await Payout.findById(req.params.id)
+      .populate('beneficiaire', 'nom prenom email telephone');
+
     if (!payout) {
       return res.status(404).json({ success: false, error: 'Tour de distribution non trouvé.' });
     }
@@ -114,13 +119,50 @@ exports.distributePayout = async (req, res, next) => {
       return res.status(403).json({ success: false, error: 'Accès réservé au Chef de Tontine.' });
     }
 
-    payout.statut = 'DISTRIBUE';
+    if (payout.statut === 'DISTRIBUE') {
+      return res.status(400).json({
+        success: false,
+        error: 'Cette cagnotte a déjà été versée.'
+      });
+    }
+
+    // Récupération de l'opérateur et du numéro de destination
+    const provider = req.body.walletProvider || payout.walletProvider || 'ORANGE_MONEY';
+    const phone = req.body.walletPhone || payout.walletPhone || payout.beneficiaire?.telephone;
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        error: 'Numéro Mobile Money du bénéficiaire manquant pour effectuer le versement.'
+      });
+    }
+
+    const beneficiaryName = `${payout.beneficiaire?.prenom} ${payout.beneficiaire?.nom}`;
+
+    // Exécution du virement direct sortant via le WalletService
+    const disburseResult = await WalletService.disbursePayout({
+      amount: payout.montantTotal,
+      currency: group.devise,
+      phone,
+      provider,
+      beneficiaryName
+    });
+
+    payout.modeDistribution = 'WALLET_DIRECT';
+    payout.walletProvider = provider;
+    payout.walletPhone = phone;
+    payout.transactionReference = disburseResult.reference;
+    payout.gatewayDisbursementId = disburseResult.disbursementId;
+    payout.disbursedBy = req.user._id;
     payout.dateEffective = new Date();
+    payout.statut = 'DISTRIBUE';
+    payout.notes = disburseResult.message;
     await payout.save();
 
     res.status(200).json({
       success: true,
-      message: 'Cagnotte marquée comme distribuée avec succès.',
+      message: disburseResult.message,
+      reference: disburseResult.reference,
       payout
     });
   } catch (error) {
@@ -145,19 +187,17 @@ exports.checkAndApplyDefaults = async (req, res, next) => {
     const resultats = [];
 
     for (const m of activeMembers) {
-      // Recherche de la dernière cotisation payée ou en attente
       const cotis = await Contribution.findOne({
         group: group._id,
         user: m.user,
-        statut: { $in: ['PAYE', 'EN_ATTENTE_DE_VALIDATION'] }
+        statut: 'PAYE'
       });
 
       if (!cotis) {
-        // Délais dépassés depuis le démarrage ou le dernier tour
         const dateLimite = new Date(group.dateDemarrage.getTime() + dureeGraceMs);
         if (maintenant > dateLimite) {
           m.statut = 'DEFAILLANT';
-          m.motifSuspension = 'Dépassement automatique du délai de grâce sans justificatif.';
+          m.motifSuspension = 'Dépassement automatique du délai de grâce sans paiement de cotisation.';
           await m.save();
           resultats.push({ user: m.user, statut: 'DEFAILLANT' });
         }

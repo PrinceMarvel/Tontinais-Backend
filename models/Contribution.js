@@ -1,6 +1,6 @@
 /**
  * @file Contribution.js
- * @description Modèle de données Mongoose représentant une cotisation individuelle et son justificatif.
+ * @description Modèle de données Mongoose représentant une cotisation 100% directe par Mobile Money / Wallet.
  * @module models/Contribution
  */
 
@@ -28,38 +28,49 @@ const contributionSchema = new mongoose.Schema(
       required: [true, 'Le montant de la cotisation est obligatoire.'],
       min: [1, 'Le montant doit être supérieur à zéro.']
     },
-    referenceTransaction: {
+    walletProvider: {
       type: String,
-      required: [true, 'La référence de transaction Mobile Money/Virement est obligatoire.'],
+      required: [true, 'Le portefeuille Mobile Money est obligatoire.'],
+      enum: {
+        values: ['ORANGE_MONEY', 'MTN_MOMO', 'WAVE', 'MOOV', 'AUTRE'],
+        message: 'Opérateur de portefeuille non supporté.'
+      },
+      default: 'ORANGE_MONEY'
+    },
+    walletPhone: {
+      type: String,
+      required: [true, 'Le numéro de téléphone du portefeuille est obligatoire.'],
       trim: true
     },
-    recuUrl: {
+    referenceTransaction: {
       type: String,
-      required: [true, 'L\'URL du reçu de paiement sur Cloudinary est obligatoire.']
+      required: [true, 'La référence de transaction est obligatoire.'],
+      unique: true,
+      trim: true
     },
-    recuPublicId: {
+    gatewayTransactionId: {
       type: String,
-      required: [true, 'L\'identifiant public Cloudinary est obligatoire.']
+      trim: true,
+      default: ''
     },
     statut: {
       type: String,
-      enum: ['EN_ATTENTE_DE_VALIDATION', 'PAYE', 'EN_RETARD', 'A_CORRIGER', 'DEFAILLANT'],
-      default: 'EN_ATTENTE_DE_VALIDATION'
+      enum: {
+        values: ['EN_ATTENTE_USSD', 'PAYE', 'EN_RETARD', 'ECHOUE', 'DEFAILLANT'],
+        message: 'Statut de cotisation non reconnu.'
+      },
+      default: 'EN_ATTENTE_USSD'
     },
-    motifRejet: {
+    datePaiement: {
+      type: Date
+    },
+    motifEchec: {
       type: String,
       default: ''
     },
-    validePar: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    },
-    dateDeclaration: {
-      type: Date,
-      default: Date.now
-    },
-    dateValidation: {
-      type: Date
+    notes: {
+      type: String,
+      default: ''
     }
   },
   {
@@ -67,8 +78,10 @@ const contributionSchema = new mongoose.Schema(
   }
 );
 
-// Indexation pour éviter les doublons de versement pour le même tour dans un groupe
+// Indexation pour éviter les doublons de cotisation pour le même tour dans un groupe
 contributionSchema.index({ group: 1, user: 1, tourNumber: 1 }, { unique: true });
 contributionSchema.index({ group: 1, statut: 1 });
+contributionSchema.index({ user: 1, statut: 1 });
+contributionSchema.index({ referenceTransaction: 1 });
 
 module.exports = mongoose.model('Contribution', contributionSchema);

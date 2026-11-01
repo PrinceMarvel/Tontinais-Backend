@@ -1,6 +1,6 @@
 /**
  * @file testCycle.js
- * @description Script de test d'intégration automatisé pour valider le cycle complet de TontiNaïs.
+ * @description Script de test d'intégration automatisé pour valider le cycle complet de TontiNaïs (100% Direct Wallet).
  * @module tests/testCycle
  */
 
@@ -118,15 +118,15 @@ async function runFullCycleTest() {
       chefRegRes.status === 201 && chefRegData.token,
       'Inscription du Chef de Tontine réussie',
       `(${chefPayload.email})`,
-      `[${chefRegRes.status}] ${chefRegData.error || JSON.stringify(chefRegData)}`
+      `[${chefRegRes.status}] ${chefRegData.error || ''}`
     );
 
     const chefToken = chefRegData.token;
 
-    logSection('4. Création d\'une Tontine Collaborative avec Paramètres');
+    logSection('4. Création d\'une Tontine Collaborative');
     const groupPayload = {
       nom: `Tontine Solidarité ${timestamp}`,
-      description: 'Groupe de test pour la validation du cycle complet.',
+      description: 'Groupe de test pour la validation du cycle complet 100% direct wallet.',
       montantCotisation: 25000,
       devise: 'XAF',
       frequence: 'MENSUEL',
@@ -213,7 +213,7 @@ async function runFullCycleTest() {
       `[${validMemberRes.status}] ${validMemberData.error || ''}`
     );
 
-    logSection('7. Génération de l\'Échéancier des Tours (Payout Schedule)');
+    logSection('7. Génération de l\'Échéancier des Tours');
     const genPayoutRes = await fetch(`${BASE_URL}/payouts/group/${group._id}/generate`, {
       method: 'POST',
       headers: {
@@ -231,75 +231,69 @@ async function runFullCycleTest() {
 
     const firstPayout = genPayoutData.payouts[0];
 
-    logSection('8. Déclaration de Cotisation par le Membre avec Reçu');
-    const dummyImageBuffer = Buffer.from([
-      0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
-      0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00, 0xff, 0xdb, 0x00, 0x43
-    ]);
-
-    const formData = new FormData();
-    formData.append('groupId', group._id);
-    formData.append('tourNumber', '1');
-    formData.append('montant', '25000');
-    formData.append('referenceTransaction', `TXN-${timestamp}`);
-    formData.append('recu', new Blob([dummyImageBuffer], { type: 'image/jpeg' }), 'recu_test.jpg');
-
+    logSection('8. Cotisation 100% Directe Mobile Money (Orange Money)');
     const contribRes = await fetch(`${BASE_URL}/contributions`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${membreToken}` },
-      body: formData
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${membreToken}`
+      },
+      body: JSON.stringify({
+        groupId: group._id,
+        tourNumber: 1,
+        montant: 25000,
+        walletProvider: 'ORANGE_MONEY',
+        walletPhone: '+237699000000'
+      })
     });
     const contribData = await contribRes.json();
     assertStep(
       contribRes.status === 201 && contribData.contribution?._id,
-      'Cotisation déclarée avec justificatif',
-      `(Statut: ${contribData.contribution?.statut})`,
+      'Cotisation directe initiée et validée via Wallet',
+      `(Statut: ${contribData.contribution?.statut}, Réf: ${contribData.reference})`,
       `[${contribRes.status}] ${contribData.error || ''}`
     );
 
-    const contributionId = contribData.contribution._id;
-
-    logSection('9. Validation du Versement par le Chef de Tontine');
-    const validContribRes = await fetch(`${BASE_URL}/contributions/${contributionId}/validate`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${chefToken}`
-      },
-      body: JSON.stringify({ statut: 'PAYE' })
+    logSection('9. Consultation du Statut de Transaction Wallet');
+    const statusRes = await fetch(`${BASE_URL}/payments/status/${contribData.reference}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${membreToken}` }
     });
-    const validContribData = await validContribRes.json();
+    const statusData = await statusRes.json();
     assertStep(
-      validContribRes.status === 200 && validContribData.contribution?.statut === 'PAYE',
-      'Cotisation validée et marquée comme PAYÉE',
-      '',
-      `[${validContribRes.status}] ${validContribData.error || ''}`
+      statusRes.status === 200 && statusData.success,
+      'Vérification temps réel du statut de la transaction',
+      `[${statusData.statut}]`,
+      `[${statusRes.status}] ${statusData.error || ''}`
     );
 
-    logSection('10. Distribution du Tour de Cagnotte (Payout)');
+    logSection('10. Distribution Directe de la Cagnotte vers le Wallet (Payout)');
     const distRes = await fetch(`${BASE_URL}/payouts/${firstPayout._id}/distribute`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${chefToken}`
-      }
+      },
+      body: JSON.stringify({
+        walletProvider: 'ORANGE_MONEY',
+        walletPhone: '+237699000000'
+      })
     });
     const distData = await distRes.json();
     assertStep(
       distRes.status === 200 && distData.payout?.statut === 'DISTRIBUE',
-      'Cagnotte distribuée avec succès au bénéficiaire',
-      '',
+      'Cagnotte transférée avec succès au portefeuille du bénéficiaire',
+      `(${distData.reference})`,
       `[${distRes.status}] ${distData.error || ''}`
     );
 
     logSection('11. Blindage de Sécurité & Contrôle d\'Accès (Anti-BOLA / IDOR)');
-    const unauthorizedRes = await fetch(`${BASE_URL}/contributions/${contributionId}/validate`, {
+    const unauthorizedRes = await fetch(`${BASE_URL}/payouts/${firstPayout._id}/distribute`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${membreToken}`
-      },
-      body: JSON.stringify({ statut: 'PAYE' })
+      }
     });
     assertStep(
       unauthorizedRes.status === 403,

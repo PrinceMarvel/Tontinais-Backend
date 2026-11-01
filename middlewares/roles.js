@@ -4,6 +4,7 @@
  * @module middlewares/roles
  */
 
+const Group = require('../models/Group');
 const Membership = require('../models/Membership');
 
 /**
@@ -72,19 +73,36 @@ const verifyGroupMember = async (req, res, next) => {
       return next();
     }
 
+    // Vérifier l'existence du groupe
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        error: 'Groupe de tontine non trouvé.'
+      });
+    }
+
+    // Le Chef de Tontine créateur possède un accès de plein droit
+    if (group.chefDeTontine && group.chefDeTontine.toString() === req.user._id.toString()) {
+      req.group = group;
+      return next();
+    }
+
+    // Vérifier l'adhésion de l'utilisateur (actif ou en attente)
     const membership = await Membership.findOne({
       group: groupId,
       user: req.user._id,
-      status: 'ACTIF'
+      statut: { $in: ['ACTIF', 'EN_ATTENTE'] }
     });
 
     if (!membership) {
       return res.status(403).json({
         success: false,
-        error: 'Accès refusé. Vous n\'êtes pas membre actif de ce groupe de tontine.'
+        error: 'Accès refusé. Vous ne faites pas partie de ce groupe de tontine.'
       });
     }
 
+    req.group = group;
     req.membership = membership;
     next();
   } catch (error) {

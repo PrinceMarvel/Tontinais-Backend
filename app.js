@@ -17,6 +17,8 @@ const userRoutes = require('./routes/userRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const contributionRoutes = require('./routes/contributionRoutes');
 const payoutRoutes = require('./routes/payoutRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
@@ -26,7 +28,7 @@ const corsOptions = {
   origin: env.CLIENT_URL,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-wallet-signature', 'x-signature']
 };
 app.use(cors(corsOptions));
 
@@ -56,6 +58,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/contributions', contributionRoutes);
 app.use('/api/payouts', payoutRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 
 // 7. Route 404 pour les ressources non trouvées

@@ -1,60 +1,126 @@
 /**
  * @file contributionController.js
- * @description Contrôleur de gestion des cotisations, envoi de reçus sur Cloudinary et validation par le Chef de Tontine.
+ * @description Contrôleur de gestion des cotisations 100% directes par Mobile Money / Portefeuille électronique.
+ * Orchestre l'initiation du débit et la validation par saisie du code secret / mot de passe sur le guichet opérateur.
  * @module controllers/contributionController
  */
 
 const Contribution = require('../models/Contribution');
 const Group = require('../models/Group');
 const Membership = require('../models/Membership');
-const { uploadToCloudinary } = require('../config/cloudinary');
+const WalletService = require('../services/walletService');
 
 /**
- * @desc Déclarer une cotisation avec téléversement du reçu sur Cloudinary
+ * @desc Initier une cotisation directe via Mobile Money (Orange Money, MTN, Wave)
  * @route POST /api/contributions
- * @access Private (Membre du groupe)
+ * @access Private (Membre actif du groupe)
  */
-exports.declareContribution = async (req, res, next) => {
+exports.initiateContribution = async (req, res, next) => {
   try {
-    const { groupId, tourNumber, referenceTransaction, montant } = req.body;
+    const { groupId, tourNumber, walletProvider, walletPhone, montant, autoConfirm } = req.body;
 
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        error: 'Veuillez joindre une preuve ou un reçu de paiement (image).'
-      });
-    }
-
+    // 1. Vérification de l'existence du groupe
     const group = await Group.findById(groupId);
     if (!group) {
       return res.status(404).json({
         success: false,
-        error: 'Groupe de tontine non trouvé.'
+        error: 'Groupe de tontine introuvable.'
       });
     }
 
-    // Téléversement sécurisé de l'image sur Cloudinary
-    const cloudinaryResult = await uploadToCloudinary(
-      req.file.buffer,
-      'tontinais/recettes'
-    );
-
-    // Enregistrement de la déclaration
-    const contribution = await Contribution.create({
+    // 2. Vérification que l'utilisateur est membre actif ou Chef de tontine
+    const isChef = group.chefDeTontine.toString() === req.user._id.toString();
+    const membership = await Membership.findOne({
       group: groupId,
       user: req.user._id,
-      tourNumber: parseInt(tourNumber, 10),
-      montant: parseFloat(montant) || group.montantCotisation,
-      referenceTransaction,
-      recuUrl: cloudinaryResult.secure_url,
-      recuPublicId: cloudinaryResult.public_id,
-      statut: 'EN_ATTENTE_DE_VALIDATION',
-      dateDeclaration: new Date()
+      statut: 'ACTIF'
     });
+
+    if (!isChef && !membership && req.user.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({
+        success: false,
+        error: 'Vous devez être un membre actif de ce groupe pour cotiser.'
+      });
+    }
+
+    const tourNum = parseInt(tourNumber, 10);
+    const montantCotisation = parseFloat(montant) || group.montantCotisation;
+
+    // 3. Vérification de doublon de versement pour le même tour
+    const existing = await Contribution.findOne({
+      group: groupId,
+      user: req.user._id,
+      tourNumber: tourNum
+    });
+
+    if (existing && existing.statut === 'PAYE') {
+      return res.status(400).json({
+        success: false,
+        error: `Votre cotisation pour le tour n°${tourNum} a déjà été réglée avec succès.`
+      });
+    }
+
+    // 4. Appel au service d'agrégation bancaire pour générer la session de collecte
+    const walletResult = await WalletService.initiateCollection({
+      amount: montantCotisation,
+      currency: group.devise,
+      phone: walletPhone,
+      provider: walletProvider,
+      description: `Cotisation TontiNaïs - ${group.nom} (Tour ${tourNum})`,
+      metadata: {
+        groupId,
+        userId: req.user._id.toString(),
+        tourNumber: tourNum
+      }
+    });
+
+    // Définition de l'état : EN_ATTENTE_USSD pour passage obligatoire par le guichet opérateur
+    const shouldAutoConfirm = autoConfirm === true;
+    const finalStatut = shouldAutoConfirm ? 'PAYE' : 'EN_ATTENTE_USSD';
+    const datePaiement = shouldAutoConfirm ? new Date() : null;
+
+    let contribution;
+    if (existing) {
+      existing.montant = montantCotisation;
+      existing.walletProvider = walletProvider;
+      existing.walletPhone = walletPhone;
+      existing.referenceTransaction = walletResult.reference;
+      existing.gatewayTransactionId = walletResult.simulation?.mockGatewayId || walletResult.reference;
+      existing.statut = finalStatut;
+      existing.datePaiement = datePaiement;
+      contribution = await existing.save();
+    } else {
+      contribution = await Contribution.create({
+        group: groupId,
+        user: req.user._id,
+        tourNumber: tourNum,
+        montant: montantCotisation,
+        walletProvider,
+        walletPhone,
+        referenceTransaction: walletResult.reference,
+        gatewayTransactionId: walletResult.simulation?.mockGatewayId || walletResult.reference,
+        statut: finalStatut,
+        datePaiement
+      });
+    }
 
     res.status(201).json({
       success: true,
-      message: 'Justificatif téléversé avec succès. Votre cotisation est en attente de validation.',
+      message: shouldAutoConfirm
+        ? `Cotisation de ${montantCotisation} ${group.devise} débitée avec succès.`
+        : `Session de paiement ouverte. Veuillez vous authentifier sur le guichet ${walletProvider}.`,
+      reference: walletResult.reference,
+      statut: finalStatut,
+      checkoutSession: {
+        contributionId: contribution._id,
+        reference: walletResult.reference,
+        operator: walletProvider,
+        phone: walletPhone,
+        amount: montantCotisation,
+        currency: group.devise,
+        groupName: group.nom,
+        tourNumber: tourNum
+      },
       contribution
     });
   } catch (error) {
@@ -63,7 +129,55 @@ exports.declareContribution = async (req, res, next) => {
 };
 
 /**
- * @desc Récupérer les cotisations d'un groupe (filtrables par tour ou statut)
+ * @desc Confirmer la transaction après validation du code secret PIN / mot de passe sur le guichet
+ * @route POST /api/contributions/:id/confirm
+ * @access Private
+ */
+exports.confirmContributionPayment = async (req, res, next) => {
+  try {
+    const { pinCode } = req.body;
+    const contribution = await Contribution.findById(req.params.id).populate('group', 'nom devise');
+    if (!contribution) {
+      return res.status(404).json({
+        success: false,
+        error: 'Transaction de cotisation introuvable.'
+      });
+    }
+
+    if (contribution.statut === 'PAYE') {
+      return res.status(200).json({
+        success: true,
+        message: 'Cette cotisation est déjà validée et payée.',
+        contribution
+      });
+    }
+
+    // Validation de sécurité sur le format du code secret Mobile Money (4 à 8 chiffres)
+    if (pinCode && String(pinCode).trim().length < 4) {
+      return res.status(400).json({
+        success: false,
+        error: 'Code PIN secret invalide. Veuillez renseigner un code à 4 chiffres minimum.'
+      });
+    }
+
+    contribution.statut = 'PAYE';
+    contribution.datePaiement = new Date();
+    await contribution.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Débit confirmé avec succès par l'opérateur ${contribution.walletProvider}.`,
+      transactionId: contribution.referenceTransaction,
+      datePaiement: contribution.datePaiement,
+      contribution
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc Récupérer les cotisations d'un groupe avec traçabilité des transactions
  * @route GET /api/contributions/group/:groupId
  * @access Private (Membre du groupe)
  */
@@ -77,8 +191,7 @@ exports.getGroupContributions = async (req, res, next) => {
     if (statut) query.statut = statut;
 
     const contributions = await Contribution.find(query)
-      .populate('user', 'nom prenom email avatarUrl')
-      .populate('validePar', 'nom prenom')
+      .populate('user', 'nom prenom email telephone avatarUrl')
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -92,48 +205,20 @@ exports.getGroupContributions = async (req, res, next) => {
 };
 
 /**
- * @desc Valider ou rejeter une cotisation par le Chef de Tontine
- * @route PUT /api/contributions/:id/validate
- * @access Private (Chef de Tontine du groupe)
+ * @desc Récupérer l'historique personnel de cotisation de l'utilisateur connecté
+ * @route GET /api/contributions/me
+ * @access Private
  */
-exports.validateContribution = async (req, res, next) => {
+exports.getMyContributions = async (req, res, next) => {
   try {
-    const { statut, motifRejet } = req.body; // statut: 'PAYE', 'EN_RETARD', 'A_CORRIGER'
-
-    const contribution = await Contribution.findById(req.params.id);
-    if (!contribution) {
-      return res.status(404).json({
-        success: false,
-        error: 'Déclaration de cotisation introuvable.'
-      });
-    }
-
-    const group = await Group.findById(contribution.group);
-    if (group.chefDeTontine.toString() !== req.user._id.toString() && req.user.role !== 'SUPER_ADMIN') {
-      return res.status(403).json({
-        success: false,
-        error: 'Seul le Chef de Tontine de ce groupe est autorisé à valider les versements.'
-      });
-    }
-
-    if (!['PAYE', 'EN_RETARD', 'A_CORRIGER'].includes(statut)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Statut de validation invalide. Choisissez PAYE, EN_RETARD ou A_CORRIGER.'
-      });
-    }
-
-    contribution.statut = statut;
-    contribution.validePar = req.user._id;
-    contribution.dateValidation = new Date();
-    if (motifRejet) contribution.motifRejet = motifRejet;
-
-    await contribution.save();
+    const contributions = await Contribution.find({ user: req.user._id })
+      .populate('group', 'nom devise frequence montantCotisation')
+      .sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
-      message: `La cotisation a été marquée comme : ${statut}.`,
-      contribution
+      count: contributions.length,
+      contributions
     });
   } catch (error) {
     next(error);

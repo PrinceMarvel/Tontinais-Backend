@@ -37,11 +37,19 @@ const env = {
     CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || 'tontinais',
     API_KEY: process.env.CLOUDINARY_API_KEY || '123456789012345',
     API_SECRET: process.env.CLOUDINARY_API_SECRET || 'tontinais_cloudinary_secret_key'
+  },
+
+  // Passerelle de paiement direct Mobile Money (Orange Money, MTN, Wave)
+  WALLET: {
+    PROVIDER: process.env.WALLET_GATEWAY_PROVIDER || 'mock',
+    API_KEY: process.env.WALLET_API_KEY || '',
+    SECRET_KEY: process.env.WALLET_SECRET_KEY || '',
+    WEBHOOK_SECRET: process.env.WALLET_WEBHOOK_SECRET || 'tontinais_wallet_webhook_secret_key_2026'
   }
 };
 
 /**
- * Validation basique au démarrage en environnement de production.
+ * Validation au démarrage en environnement de production.
  */
 if (env.NODE_ENV === 'production') {
   const requiredVars = ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'MONGODB_URI'];
