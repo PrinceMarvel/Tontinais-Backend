@@ -34,6 +34,7 @@ const sendTokenResponse = async (user, statusCode, res) => {
       token,
       refreshToken,
       user: {
+        _id: user._id,
         id: user._id,
         nom: user.nom,
         prenom: user.prenom,
