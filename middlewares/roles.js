@@ -18,7 +18,7 @@ const verifyAdmin = (req, res, next) => {
     });
   }
 
-  const allowedRoles = ['SUPER_ADMIN', 'MODERATEUR_FINANCIER'];
+  const allowedRoles = ['SUPER_ADMIN', 'MODERATEUR_FINANCIER', 'CHEF_DE_TONTINE'];
 
   if (!allowedRoles.includes(req.user.role)) {
     return res.status(403).json({
