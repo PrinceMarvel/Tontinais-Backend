@@ -11,7 +11,8 @@ const {
   getMyGroups,
   getGroupById,
   joinGroupWithCode,
-  validateMembership
+  validateMembership,
+  deleteGroup
 } = require('../controllers/groupController');
 const { protect } = require('../middlewares/auth');
 const { verifyChefDeTontine, verifyGroupMember } = require('../middlewares/roles');
@@ -52,6 +53,7 @@ router
 router.post('/join', body('codeInvitation').notEmpty().withMessage('Code d\'invitation requis.'), validate, joinGroupWithCode);
 
 router.get('/:id', verifyGroupMember, getGroupById);
+router.delete('/:id', deleteGroup);
 
 router.put('/:groupId/members/:membershipId/validate', validateMembership);
 

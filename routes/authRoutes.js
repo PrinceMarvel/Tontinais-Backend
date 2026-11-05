@@ -36,7 +36,23 @@ const validate = (req, res, next) => {
 const registerValidation = [
   body('nom').trim().notEmpty().withMessage('Le nom est requis.'),
   body('prenom').trim().notEmpty().withMessage('Le prénom est requis.'),
-  body('email').isEmail().withMessage('Veuillez fournir un e-mail valide.'),
+  body('email')
+    .trim()
+    .isEmail()
+    .withMessage('Veuillez fournir une adresse e-mail valide.')
+    .custom((email) => {
+      const domain = email.split('@')[1]?.toLowerCase();
+      const disposable = [
+        'yopmail.com', 'yopmail.fr', 'mailinator.com', 'tempmail.com', 'temp-mail.org',
+        '10minutemail.com', 'guerrillamail.com', 'trashmail.com', 'sharklasers.com',
+        'dispostable.com', 'getairmail.com', 'mohmal.com', 'fakeinbox.com',
+        'throwawaymail.com', 'getnada.com', 'burnermail.io'
+      ];
+      if (disposable.includes(domain)) {
+        throw new Error('Les adresses e-mail temporaires ou jetables sont interdites.');
+      }
+      return true;
+    }),
   body('telephone')
     .notEmpty()
     .withMessage('Le numéro de téléphone est requis.')

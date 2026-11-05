@@ -119,6 +119,16 @@ exports.getGroupById = async (req, res, next) => {
       });
     }
 
+    if (!group.qrCodeUrl && group.codeInvitation) {
+      try {
+        const payload = JSON.stringify({ code: group.codeInvitation, nom: group.nom });
+        group.qrCodeUrl = await QRCode.toDataURL(payload);
+        await group.save();
+      } catch (qrErr) {
+        console.warn('Génération QR Code en ligne de secours :', qrErr.message);
+      }
+    }
+
     const members = await Membership.find({ group: group._id })
       .populate('user', 'nom prenom email telephone avatarUrl')
       .sort({ rangTour: 1 });
@@ -259,6 +269,40 @@ exports.validateMembership = async (req, res, next) => {
       success: true,
       message: `La demande d'adhésion a été ${action === 'APPROUVER' ? 'approuvée' : 'rejetée'}.`,
       membership
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc Supprimer un groupe de tontine (Chef de Tontine ou Super Admin)
+ * @route DELETE /api/groups/:id
+ * @access Private
+ */
+exports.deleteGroup = async (req, res, next) => {
+  try {
+    const group = await Group.findById(req.params.id);
+    if (!group) {
+      return res.status(404).json({ success: false, error: 'Groupe de tontine introuvable.' });
+    }
+
+    const isChef = group.chefDeTontine.toString() === req.user._id.toString();
+    const isAdmin = req.user.role === 'SUPER_ADMIN';
+
+    if (!isChef && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'Seul le Chef de Tontine ou un administrateur peut supprimer ce groupe.'
+      });
+    }
+
+    await Membership.deleteMany({ group: group._id });
+    await Group.findByIdAndDelete(group._id);
+
+    res.status(200).json({
+      success: true,
+      message: `La tontine "${group.nom}" a été supprimée avec succès.`
     });
   } catch (error) {
     next(error);
