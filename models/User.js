@@ -39,6 +39,11 @@ const userSchema = new mongoose.Schema(
       required: [true, 'Le numéro de téléphone est obligatoire.'],
       trim: true
     },
+    paysCode: {
+      type: String,
+      default: '',
+      trim: true
+    },
     motDePasse: {
       type: String,
       required: [true, 'Le mot de passe est obligatoire.'],

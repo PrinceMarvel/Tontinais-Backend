@@ -37,7 +37,11 @@ const registerValidation = [
   body('nom').trim().notEmpty().withMessage('Le nom est requis.'),
   body('prenom').trim().notEmpty().withMessage('Le prénom est requis.'),
   body('email').isEmail().withMessage('Veuillez fournir un e-mail valide.'),
-  body('telephone').notEmpty().withMessage('Le numéro de téléphone est requis.'),
+  body('telephone')
+    .notEmpty()
+    .withMessage('Le numéro de téléphone est requis.')
+    .matches(/^\+[1-9]\d{6,14}$/)
+    .withMessage('Veuillez fournir un numéro de téléphone international officiel valide (ex: +225..., +221..., etc.).'),
   body('motDePasse')
     .isLength({ min: 8 })
     .withMessage('Le mot de passe doit contenir au moins 8 caractères.')

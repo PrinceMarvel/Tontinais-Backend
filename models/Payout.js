@@ -42,7 +42,7 @@ const payoutSchema = new mongoose.Schema(
     },
     walletProvider: {
       type: String,
-      enum: ['ORANGE_MONEY', 'MTN_MOMO', 'WAVE', 'MOOV', 'AUTRE'],
+      enum: ['ORANGE_MONEY', 'MTN_MOMO', 'WAVE', 'MOOV', 'AIRTEL_MONEY', 'MPESA', 'FREE_MONEY', 'TMONEY', 'CARTE_BANCAIRE', 'AUTRE'],
       default: 'ORANGE_MONEY'
     },
     walletPhone: {

@@ -32,7 +32,7 @@ const contributionSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Le portefeuille Mobile Money est obligatoire.'],
       enum: {
-        values: ['ORANGE_MONEY', 'MTN_MOMO', 'WAVE', 'MOOV', 'AUTRE'],
+        values: ['ORANGE_MONEY', 'MTN_MOMO', 'WAVE', 'MOOV', 'AIRTEL_MONEY', 'MPESA', 'FREE_MONEY', 'TMONEY', 'CARTE_BANCAIRE', 'AUTRE'],
         message: 'Opérateur de portefeuille non supporté.'
       },
       default: 'ORANGE_MONEY'
