@@ -200,6 +200,7 @@ exports.joinGroupWithCode = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: 'Demande d\'adhésion soumise avec succès au Chef de Tontine.',
+      group,
       membership
     });
   } catch (error) {
