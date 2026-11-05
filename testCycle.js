@@ -27,28 +27,16 @@ async function cleanTestData() {
   try {
     const testUsers = await User.find({ email: { $regex: /@tontinais\.test$/i } }).select('_id');
     const testUserIds = testUsers.map((u) => u._id);
-
     const testGroups = await Group.find({
-      $or: [
-        { chefDeTontine: { $in: testUserIds } },
-        { nom: { $regex: /^Tontine Solidarité/i } }
-      ]
+      $or: [{ chefDeTontine: { $in: testUserIds } }, { nom: { $regex: /^Tontine Solidarité/i } }]
     }).select('_id');
     const testGroupIds = testGroups.map((g) => g._id);
 
-    await Contribution.deleteMany({
-      $or: [{ group: { $in: testGroupIds } }, { user: { $in: testUserIds } }]
-    });
-    await Payout.deleteMany({
-      $or: [{ group: { $in: testGroupIds } }, { beneficiaire: { $in: testUserIds } }]
-    });
-    await Membership.deleteMany({
-      $or: [{ group: { $in: testGroupIds } }, { user: { $in: testUserIds } }]
-    });
+    await Contribution.deleteMany({ $or: [{ group: { $in: testGroupIds } }, { user: { $in: testUserIds } }] });
+    await Payout.deleteMany({ $or: [{ group: { $in: testGroupIds } }, { beneficiaire: { $in: testUserIds } }] });
+    await Membership.deleteMany({ $or: [{ group: { $in: testGroupIds } }, { user: { $in: testUserIds } }] });
     await Group.deleteMany({ _id: { $in: testGroupIds } });
-    await User.deleteMany({
-      $or: [{ _id: { $in: testUserIds } }, { email: { $regex: /@tontinais\.test$/i } }]
-    });
+    await User.deleteMany({ $or: [{ _id: { $in: testUserIds } }, { email: { $regex: /@tontinais\.test$/i } }] });
   } catch (err) {
     console.warn(`[Avertissement Nettoyage] : ${err.message}`);
   }
@@ -325,11 +313,7 @@ async function runFullCycleTest() {
   } finally {
     await cleanTestData();
     logSuccess('Nettoyage final des données de test exécuté');
-
-    if (server) {
-      server.close();
-      logSuccess('Serveur de test HTTP arrêté');
-    }
+    if (server) { server.close(); logSuccess('Serveur de test HTTP arrêté'); }
     await mongoose.disconnect();
     logSuccess('Connexion MongoDB Atlas libérée');
   }
