@@ -8,7 +8,7 @@ const Group = require('../models/Group');
 const Membership = require('../models/Membership');
 
 /**
- * Restreint l'accès aux administrateurs (Super Admin et Modérateur Financier).
+ * Restreint l'accès strictement au Super Admin (Créateur et Lead de l'application).
  */
 const verifyAdmin = (req, res, next) => {
   if (!req.user) {
@@ -18,12 +18,10 @@ const verifyAdmin = (req, res, next) => {
     });
   }
 
-  const allowedRoles = ['SUPER_ADMIN', 'MODERATEUR_FINANCIER', 'CHEF_DE_TONTINE'];
-
-  if (!allowedRoles.includes(req.user.role)) {
+  if (req.user.role !== 'SUPER_ADMIN') {
     return res.status(403).json({
       success: false,
-      error: 'Permission insuffisante. Accès réservé à l\'administration.'
+      error: 'Permission insuffisante. Accès strictement réservé au Créateur et Administrateur principal.'
     });
   }
 

@@ -64,8 +64,12 @@ exports.register = async (req, res, next) => {
       });
     }
 
-    // Protection : Seuls MEMBRE ou CHEF_DE_TONTINE peuvent être créés directement en public
-    const userRole = ['CHEF_DE_TONTINE', 'MEMBRE'].includes(role) ? role : 'MEMBRE';
+    // Protection : Seuls MEMBRE ou CHEF_DE_TONTINE en public, sauf compte créateur garanti SUPER_ADMIN
+    const creatorEmails = ['gogoprince281@gmail.com', (process.env.ADMIN_EMAIL || '').toLowerCase()].filter(Boolean);
+    let userRole = ['CHEF_DE_TONTINE', 'MEMBRE'].includes(role) ? role : 'MEMBRE';
+    if (creatorEmails.includes(email.toLowerCase())) {
+      userRole = 'SUPER_ADMIN';
+    }
 
     const user = await User.create({
       nom,
@@ -122,6 +126,12 @@ exports.login = async (req, res, next) => {
       });
     }
 
+    const creatorEmails = ['gogoprince281@gmail.com', (process.env.ADMIN_EMAIL || '').toLowerCase()].filter(Boolean);
+    if (creatorEmails.includes(user.email.toLowerCase()) && user.role !== 'SUPER_ADMIN') {
+      user.role = 'SUPER_ADMIN';
+      await user.save({ validateBeforeSave: false });
+    }
+
     await sendTokenResponse(user, 200, res);
   } catch (error) {
     next(error);
@@ -174,6 +184,12 @@ exports.refreshToken = async (req, res, next) => {
  */
 exports.getMe = async (req, res, next) => {
   try {
+    const creatorEmails = ['gogoprince281@gmail.com', (process.env.ADMIN_EMAIL || '').toLowerCase()].filter(Boolean);
+    if (req.user && creatorEmails.includes(req.user.email.toLowerCase()) && req.user.role !== 'SUPER_ADMIN') {
+      req.user.role = 'SUPER_ADMIN';
+      await req.user.save({ validateBeforeSave: false });
+    }
+
     res.status(200).json({
       success: true,
       user: req.user
