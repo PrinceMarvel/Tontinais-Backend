@@ -9,6 +9,7 @@ const { body, validationResult } = require('express-validator');
 const {
   initiateContribution,
   confirmContributionPayment,
+  cancelContributionPayment,
   getGroupContributions,
   getMyContributions
 } = require('../controllers/contributionController');
@@ -56,10 +57,13 @@ router.post(
 // 2. Confirmer le débit direct (validation code PIN / simulateur)
 router.post('/:id/confirm', confirmContributionPayment);
 
-// 3. Consulter les cotisations du groupe
+// 3. Annuler la session de débit (statut automatique ECHOUE)
+router.post('/:id/cancel', cancelContributionPayment);
+
+// 4. Consulter les cotisations du groupe
 router.get('/group/:groupId', verifyGroupMember, getGroupContributions);
 
-// 4. Consulter son propre historique de versements
+// 5. Consulter son propre historique de versements
 router.get('/me', getMyContributions);
 
 module.exports = router;

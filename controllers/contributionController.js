@@ -182,6 +182,33 @@ exports.confirmContributionPayment = async (req, res, next) => {
 };
 
 /**
+ * @desc Annuler un paiement de cotisation (bascule automatiquement au statut ECHOUE)
+ * @route POST /api/contributions/:id/cancel
+ * @access Private
+ */
+exports.cancelContributionPayment = async (req, res, next) => {
+  try {
+    const contribution = await Contribution.findById(req.params.id);
+    if (!contribution) {
+      return res.status(404).json({ success: false, error: 'Transaction de cotisation introuvable.' });
+    }
+    if (contribution.statut !== 'PAYE') {
+      contribution.statut = 'ECHOUE';
+      contribution.motifEchec = 'Annulation manuelle par l’utilisateur';
+      await contribution.save();
+    }
+    res.status(200).json({
+      success: true,
+      message: 'Paiement annulé. Statut : Échec.',
+      statut: 'ECHOUE',
+      contribution
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * @desc Récupérer les cotisations d'un groupe avec traçabilité des transactions
  * @route GET /api/contributions/group/:groupId
  * @access Private (Membre du groupe)
