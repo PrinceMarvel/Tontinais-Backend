@@ -135,7 +135,7 @@ exports.initiateContribution = async (req, res, next) => {
  */
 exports.confirmContributionPayment = async (req, res, next) => {
   try {
-    const { pinCode } = req.body;
+    const { pinCode, transactionCode } = req.body;
     const contribution = await Contribution.findById(req.params.id).populate('group', 'nom devise');
     if (!contribution) {
       return res.status(404).json({
@@ -148,26 +148,31 @@ exports.confirmContributionPayment = async (req, res, next) => {
       return res.status(200).json({
         success: true,
         message: 'Cette cotisation est déjà validée et payée.',
+        statut: 'PAYE',
+        transactionId: contribution.gatewayTransactionId || contribution.referenceTransaction,
+        datePaiement: contribution.datePaiement,
         contribution
       });
     }
 
-    // Validation de sécurité sur le format du code secret Mobile Money (4 à 8 chiffres)
-    if (pinCode && String(pinCode).trim().length < 4) {
+    const code = (transactionCode || pinCode || '').toString().trim();
+    if (!code || code.length < 3) {
       return res.status(400).json({
         success: false,
-        error: 'Code PIN secret invalide. Veuillez renseigner un code à 4 chiffres minimum.'
+        error: 'Veuillez renseigner le code de confirmation de transaction de l’opérateur (3 caractères minimum).'
       });
     }
 
     contribution.statut = 'PAYE';
+    contribution.gatewayTransactionId = code;
     contribution.datePaiement = new Date();
     await contribution.save();
 
     res.status(200).json({
       success: true,
-      message: `Débit confirmé avec succès par l'opérateur ${contribution.walletProvider}.`,
-      transactionId: contribution.referenceTransaction,
+      message: `Paiement certifié avec succès par l'opérateur ${contribution.walletProvider}. Statut : PAYÉ.`,
+      statut: 'PAYE',
+      transactionId: code,
       datePaiement: contribution.datePaiement,
       contribution
     });
